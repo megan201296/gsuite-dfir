@@ -12,7 +12,7 @@ class Gsuite(object):
     """
 
     def __init__(self):
-        self.service = gsuite_session()
+        self.service = self.gsuite_session()
 
     def gsuite_session(self):
         """
@@ -87,6 +87,13 @@ class Gsuite(object):
 
     def get_geoip(self, ipAddress):
         reader = geoip2.database.Reader(
-            '/Users/meganroddie/Documents/gsuite_dfir/GeoLite2-City.mmdb')
+            '~/Documents/gsuite_dfir/GeoLite2-City.mmdb')
         response = reader.city(ipAddress)
         return response.country.iso_code
+
+
+
+
+gsuite = Gsuite()
+
+logins(gsuite.service)

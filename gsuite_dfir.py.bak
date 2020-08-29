@@ -87,7 +87,7 @@ def get_logs(service, app):
 
 
 def get_geoip(ipAddress):
-    reader = geoip2.database.Reader('/Users/meganroddie/Documents/gsuite_dfir/GeoLite2-City.mmdb')
+    reader = geoip2.database.Reader('GeoLite2-City.mmdb')
     response = reader.city(ipAddress)
     return response.country.iso_code
 
