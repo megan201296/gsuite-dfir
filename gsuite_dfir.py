@@ -4,6 +4,11 @@ import os.path
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+import pandas as pd
+import geoip2.database
+import sys
+from openpyxl import load_workbook
+import time
 
 
 class Gsuite(object):
@@ -13,6 +18,8 @@ class Gsuite(object):
 
     def __init__(self):
         self.service = self.gsuite_session()
+        self.output = "/Users/megan/output.xlsx"
+        self.geolocate_db = "./GeoLite2-City.mmdb"
 
     def gsuite_session(self):
         """
@@ -43,57 +50,116 @@ class Gsuite(object):
 
         return service
 
-    def get_logins(self):
+    def get_login_activity(self):
 
         # Call the Admin SDK Reports API
         results = self.service.activities().list(
             userKey='all', applicationName='login').execute()
         activities = results.get('items', [])
 
-        if not activities:
-            print('No logins found.')
-        else:
-            print('Login Details:')
-            for activity in activities:
-                print(u'{0}: {1} ({2}) {3}'.format(activity['id']['time'],
-                                                   activity['actor']['email'], activity['events'][0]['name'], activity['ipAddress']))
+        # save logs to Pandas data frame and clean up data
+        df_activities = pd.json_normalize(activities)
+        df_events = pd.json_normalize(data=activities, record_path=['events'])
+        df_logs = df_activities.join(df_events)
+        df_params = df_logs['parameters'].apply(pd.Series)
+        df_params =  df_params.rename(columns = lambda x : 'param_' + str(x))
+        df_logs = df_activities.join(df_params)
+        df_logs = df_logs.drop(columns=['events', 'kind', 'etag', 'id.uniqueQualifier', 'id.customerId', 'actor.profileId'])
+        df_logs = df_logs.rename(columns={"id.time": "timestamp", "actor.email": "userEmail", "id.applicationName": "applicationName"})
+        df_logs['loginCountry'] = df_logs['ipAddress'].map(lambda ipAddress: self.get_geoip(ipAddress)[0])
+        df_logs['loginCity'] = df_logs['ipAddress'].map(lambda ipAddress: self.get_geoip(ipAddress)[1])
+        df_logs.to_excel(self.output, "Login Activity", index=False)
 
-            print('Logins by Country:')
-            for activity in activities:
-                country = get_geoip(activity['ipAddress'])
-                print(u'{0} {1} {2}'.format(country, activity['id']['time'],
-                                            activity['actor']['email']))
+    def get_drive_activity(self):
 
-            print('Login Failures:')
-            for activity in activities:
-                if activity['events'][0]['name'] == "login_failure":
-                    print(u'{1} {2}'.format(country, activity['id']['time'],
-                                            activity['actor']['email']))
-
-    def get_logs(self, app):
+        # Call the Admin SDK Reports API
         results = self.service.activities().list(
-            userKey='all', applicationName=app).execute()
+            userKey='all', applicationName='drive').execute()
         activities = results.get('items', [])
 
-        for activity in activities:
-            with open('summary.csv', 'a', newline='') as summary:
-                summary_write = csv.writer(summary, delimiter=',')
-                try:
-                    summary_write.writerow([activity['id']['time'], activity['id']['applicationName'], activity['actor']
-                                            ['email'], activity['ipAddress'], activity['events'][0]['type'], activity['events'][0]['name']])
-                except KeyError:
-                    summary_write.writerow([activity['id']['time'], activity['id']['applicationName'], activity['actor']
-                                            ['email'], None, activity['events'][0]['type'], activity['events'][0]['name']])
+        # save logs to Pandas data frame and clean up data
+        df_activities = pd.json_normalize(activities)
+        df_events = pd.json_normalize(data=activities, record_path=['events'])
+        df_logs = df_activities.join(df_events)
+        df_params = df_logs['parameters'].apply(pd.Series)
+        df_params =  df_params.rename(columns = lambda x : 'param_' + str(x))
+        df_logs = df_activities.join(df_params)
+        df_logs = df_logs.drop(columns=['events', 'kind', 'etag', 'id.uniqueQualifier', 'actor.profileId', 'id.customerId'])
+        df_logs = df_logs.rename(columns={"id.time": "timestamp", "actor.email": "userEmail", "id.applicationName": "applicationName"})
+        df_logs['loginCountry'] = df_logs['ipAddress'].apply(lambda ipAddress: self.get_geoip(ipAddress)[0] if type(ipAddress) == str  else "")
+        df_logs['loginCity'] = df_logs['ipAddress'].apply(lambda ipAddress: self.get_geoip(ipAddress)[1] if type(ipAddress) == str  else "")
+
+        with pd.ExcelWriter(self.output, engine='openpyxl', mode='a') as writer:
+            writer.book = load_workbook(self.output)
+            df_logs.to_excel(writer, "Google Drive Activity", index=False)
+
+    def get_admin_activity(self):
+
+        # Call the Admin SDK Reports API
+        results = self.service.activities().list(
+            userKey='all', applicationName='admin').execute()
+        activities = results.get('items', [])
+
+        # save logs to Pandas data frame and clean up data
+        df_activities = pd.json_normalize(activities)
+        df_events = pd.json_normalize(data=activities, record_path=['events'])
+        df_logs = df_activities.join(df_events)
+        df_params = df_logs['parameters'].apply(pd.Series)
+        df_params =  df_params.rename(columns = lambda x : 'param_' + str(x))
+        df_logs = df_activities.join(df_params)
+        df_logs = df_logs.drop(columns=['events', 'kind', 'etag', 'id.uniqueQualifier', 'actor.profileId', 'id.customerId'])
+        df_logs = df_logs.rename(columns={"id.time": "timestamp", "actor.email": "userEmail", "id.applicationName": "applicationName"})
+        df_logs['loginCountry'] = df_logs['ipAddress'].apply(lambda ipAddress: self.get_geoip(ipAddress)[0] if type(ipAddress) == str  else "")
+        df_logs['loginCity'] = df_logs['ipAddress'].apply(lambda ipAddress: self.get_geoip(ipAddress)[1] if type(ipAddress) == str  else "")        
+
+        with pd.ExcelWriter(self.output, engine='openpyxl', mode='a') as writer:
+            writer.book = load_workbook(self.output)
+            df_logs.to_excel(writer, "Admin Activity", index=False)
+
+    def get_user_activity(self):
+
+        # Call the Admin SDK Reports API
+        results = self.service.activities().list(
+            userKey='all', applicationName='user_accounts').execute()
+        activities = results.get('items', [])
+        # save logs to Pandas data frame and clean up data
+        df_activities = pd.json_normalize(activities)
+        df_events = pd.json_normalize(data=activities, record_path=['events'])
+        df_logs = df_activities.join(df_events)
+        df_logs = df_logs.drop(columns=['events', 'kind', 'etag', 'id.uniqueQualifier', 'actor.profileId', 'id.customerId'])
+        df_logs = df_logs.rename(columns={"id.time": "timestamp", "actor.email": "userEmail", "id.applicationName": "applicationName"})
+        df_logs['loginCountry'] = df_logs['ipAddress'].apply(lambda ipAddress: self.get_geoip(ipAddress)[0] if type(ipAddress) == str  else "")
+        df_logs['loginCity'] = df_logs['ipAddress'].apply(lambda ipAddress: self.get_geoip(ipAddress)[1] if type(ipAddress) == str  else "")
+        df_logs = df_logs[["timestamp", "userEmail", "ipAddress", "loginCountry", "loginCity", "applicationName", "actor.callerType", "type", "name"]]
+
+        with pd.ExcelWriter(self.output, engine='openpyxl', mode='a') as writer:
+            writer.book = load_workbook(self.output)
+            df_logs.to_excel(writer, "User Activity", index=False)
 
     def get_geoip(self, ipAddress):
         reader = geoip2.database.Reader(
-            '~/Documents/gsuite_dfir/GeoLite2-City.mmdb')
+            self.geolocate_db)
         response = reader.city(ipAddress)
-        return response.country.iso_code
+        return [response.country.iso_code, response.city.name]
+    
 
+    def timeline(self):
+        sheet_to_df_map = pd.read_excel(self.output, sheet_name=None)
+        timeline = pd.concat(sheet_to_df_map, axis=0, ignore_index=True)
+        
+        with pd.ExcelWriter(self.output, engine='openpyxl', mode='a') as writer:
+            writer.book = load_workbook(self.output)
+            timeline.to_excel(writer, "All", index=False)
 
-
+start_time = time.time()
 
 gsuite = Gsuite()
 
-logins(gsuite.service)
+gsuite.get_login_activity()
+gsuite.get_drive_activity()
+gsuite.get_admin_activity()
+gsuite.get_user_activity()
+gsuite.timeline()
+
+elapsed = time.time() - start_time
+print(f'Total execution time: {elapsed}')

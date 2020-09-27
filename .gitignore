@@ -17,3 +17,5 @@ token.pickle
 credentials.json
 
 GeoLite2-City.mmdb
+summary.csv
+*.bak
