@@ -20,7 +20,6 @@ class Google(object):
     def __init__(self):
         self.output = args.output
         self.geolocate_db = config['geolocate_db']
-        self.token_path = config['token_path']
         self.creds_path = config['creds_path']
         self.service = self.google_session()
 
@@ -34,8 +33,8 @@ class Google(object):
         # The file token.pickle stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
         # time.
-        if os.path.exists(self.token_path):
-            with open(self.token_path, 'rb') as token:
+        if os.path.exists('token.pickle'):
+            with open('token.pickle', 'rb') as token:
                 creds = pickle.load(token)
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
@@ -46,7 +45,7 @@ class Google(object):
                     self.creds_path, SCOPES)
                 creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
-            with open(self.token_path, 'wb') as token:
+            with open('token.pickle', 'wb') as token:
                 pickle.dump(creds, token)
 
         service = build('admin', 'reports_v1', credentials=creds)
