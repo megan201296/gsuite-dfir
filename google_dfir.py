@@ -9,21 +9,24 @@ import geoip2.database
 import sys
 from openpyxl import load_workbook
 import time
+import json
+import argparse
 
-
-class Gsuite(object):
+class Google(object):
     """
-    Class for doing bulk of operations related to GSuite DFIR activities
+    Class for doing bulk of operations related to Google Workspace DFIR activities
     """
 
     def __init__(self):
-        self.service = self.gsuite_session()
-        self.output = "/Users/megan/output.xlsx"
-        self.geolocate_db = "./GeoLite2-City.mmdb"
+        self.output = args.output
+        self.geolocate_db = config['geolocate_db']
+        self.token_path = config['token_path']
+        self.creds_path = config['creds_path']
+        self.service = self.google_session()
 
-    def gsuite_session(self):
+    def google_session(self):
         """
-        Establish connection to GSuite.
+        Establish connection to Google Wrospace.
         """
         creds = None
         SCOPES = ['https://www.googleapis.com/auth/admin.reports.audit.readonly']
@@ -31,8 +34,8 @@ class Gsuite(object):
         # The file token.pickle stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
         # time.
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
+        if os.path.exists(self.token_path):
+            with open(self.token_path, 'rb') as token:
                 creds = pickle.load(token)
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
@@ -40,10 +43,10 @@ class Gsuite(object):
                 creds.refresh(Request())
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
+                    self.creds_path, SCOPES)
                 creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
-            with open('token.pickle', 'wb') as token:
+            with open(self.token_path, 'wb') as token:
                 pickle.dump(creds, token)
 
         service = build('admin', 'reports_v1', credentials=creds)
@@ -151,15 +154,36 @@ class Gsuite(object):
             writer.book = load_workbook(self.output)
             timeline.to_excel(writer, "All", index=False)
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Retrieve and process Google Workspace logs"
+    )
+
+    parser.add_argument(
+        "-o", "--output",
+        help="Output path"
+    )
+
+    args = parser.parse_args()
+
+    return args
+
 start_time = time.time()
 
-gsuite = Gsuite()
+args = parse_args()
 
-gsuite.get_login_activity()
-gsuite.get_drive_activity()
-gsuite.get_admin_activity()
-gsuite.get_user_activity()
-gsuite.timeline()
+with open("config.json") as json_data_file:
+    config = json.load(json_data_file)
+
+google = Google()
+
+vars(google)
+
+google.get_login_activity()
+google.get_drive_activity()
+google.get_admin_activity()
+google.get_user_activity()
+google.timeline()
 
 elapsed = time.time() - start_time
 print(f'Total execution time: {elapsed}')

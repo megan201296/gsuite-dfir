@@ -1,0 +1,5 @@
+{
+   "geolocate_db": "./GeoLite2-City.mmdb",
+   "token_path": "./token.pickle",
+   "creds_path": "./credentials.json"
+}

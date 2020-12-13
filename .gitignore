@@ -18,4 +18,5 @@ credentials.json
 
 GeoLite2-City.mmdb
 summary.csv
-*.bak
+
+config.py
